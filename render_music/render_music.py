@@ -21,8 +21,13 @@
 import bpy, aud
 from bpy.app.handlers import persistent
 
+is_rendering = False
+
 @persistent
 def play_music(scene):
+    global is_rendering
+    is_rendering = True
+
     handle = bpy.types.RenderSettings.music_handle
     addon_prefs = bpy.context.user_preferences.addons[__package__].preferences
 
@@ -36,6 +41,9 @@ def play_music(scene):
 
 @persistent
 def kill_music(scene):
+    global is_rendering
+    is_rendering = False
+
     handle = bpy.types.RenderSettings.music_handle
 
     if hasattr(handle, "status") and handle.status == True:
@@ -53,3 +61,50 @@ def end_music(scene):
         device = aud.device()
         factory = aud.Factory(addon_prefs.endfile)
         bpy.types.RenderSettings.music_handle = device.play(factory)
+
+# A hacky way to try detecting bake completion:
+#  When idle, scene updates happen continuously on the same frame.
+#  However, baking grabs control of the system and sweeps through the range.
+#  So detect non-animation continuous streak followed by same frame streak.
+
+last_frame = -1
+inc_streak_size = 0
+same_streak_size = 0
+big_inc_streak_countdown = 0
+
+@persistent
+def check_scene_update(scene):
+    global last_frame, inc_streak_size, same_streak_size, big_inc_streak_countdown, is_rendering
+
+    prev_frame = last_frame
+    frame = scene.frame_current
+    last_frame = frame
+
+    if frame == prev_frame + 1:
+        same_streak_size = 0
+        big_inc_streak_countdown = 0
+
+        if is_rendering or len(bpy.data.screens) == 0 or bpy.data.screens[0].is_animation_playing:
+            inc_streak_size = 0
+        else:
+            inc_streak_size = inc_streak_size + 1
+
+    else:
+        if inc_streak_size > 10:
+            # Allow for a few random frame changes between inc streak and settling down
+            big_inc_streak_countdown = 3
+
+        inc_streak_size = 0
+
+        if frame == prev_frame:
+            same_streak_size = same_streak_size + 1
+
+            if same_streak_size > 5 and big_inc_streak_countdown > 0:
+                big_inc_streak_countdown = 0
+
+                addon_prefs = bpy.context.user_preferences.addons[__package__].preferences
+                if addon_prefs.use_heuristic and not is_rendering:
+                    end_music(scene)
+        else:
+            same_streak_size = 0
+            big_inc_streak_countdown = big_inc_streak_countdown - 1

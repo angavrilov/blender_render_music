@@ -66,6 +66,10 @@ class RenderMusicProperties(AddonPreferences):
         name = "Play sound upon render completion",
         description = "Enable the ability to play a sound when a render completes",
         default = True)
+    use_heuristic = bpy.props.BoolProperty(
+        name = "Heuristically detect physics bake completion",
+        description = "Tries to detect it by observing a certain pattern of current frame changes",
+        default = False)
 
     def draw(self, context):
         layout = self.layout
@@ -74,6 +78,7 @@ class RenderMusicProperties(AddonPreferences):
         col = split.column()
         col.prop(self, "use_play", text="Play Music")
         col.prop(self, "use_end", text="End Music")
+        col.prop(self, "use_heuristic", text="Heuristic physics bake end detection")
         col = split.column()
         col.prop(self, "playfile", text="")
         col.prop(self, "endfile", text="")
@@ -98,12 +103,14 @@ def register():
     bpy.app.handlers.render_pre.append(render_music.play_music)
     bpy.app.handlers.render_cancel.append(render_music.kill_music)
     bpy.app.handlers.render_complete.append(render_music.end_music)
+    bpy.app.handlers.scene_update_post.append(render_music.check_scene_update)
 
 
 def unregister():
     bpy.app.handlers.render_complete.remove(render_music.end_music)
     bpy.app.handlers.render_cancel.remove(render_music.kill_music)
     bpy.app.handlers.render_pre.remove(render_music.play_music)
+    bpy.app.handlers.scene_update_post.remove(render_music.check_scene_update)
 
     bpy.types.RENDER_PT_render.remove(render_panel)
 
